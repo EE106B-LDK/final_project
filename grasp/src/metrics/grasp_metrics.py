@@ -159,12 +159,14 @@ def compute_gravity_resistance(vertices, normals, num_facets, mu, gamma, object_
     -------
     float: quality of the grasp
     """
+    n_verts = len(vertices)
+    f_dim = 4 * n_verts
     G = get_grasp_map(vertices, normals, num_facets, mu, gamma)
     wrench = np.array([0, 0, -GRAVITY * object_mass, 0, 0, 0])
     opti = Opti()
 
     # Define vars
-    f = opti.variable(8, 1)
+    f = opti.variable(f_dim, 1)
 
     # Define objective func
     obj = mtimes(f.T, f)
@@ -192,15 +194,14 @@ def compute_gravity_resistance(vertices, normals, num_facets, mu, gamma, object_
         facet_normals.append(normalize(np.cross(v1, v2)))
 
     constraints = []
-    constraints.extend([dot(n, f[0:3]) > 0 for n in facet_normals])
-    constraints.extend([dot(n, f[4:7]) > 0 for n in facet_normals])
-    constraints.append(f[3] <= gamma * f[2])
-    constraints.append(f[7] <= gamma * f[6])
+    for i in range(n_verts):
+        constraints.extend([dot(n, f[4*i:4*i+3]) > 0 for n in facet_normals])
+        constraints.append(f[4*i+3] <= gamma * f[4*i+2])
     constraints.append(mtimes(G, f) == -wrench)
     opti.subject_to(constraints)
 
     # Set initial conditions
-    opti.set_initial(f, np.zeros((8, 1)))
+    opti.set_initial(f, np.zeros((f_dim, 1)))
     
     # Construct and solve
     opti.solver('ipopt')
@@ -211,7 +212,8 @@ def compute_gravity_resistance(vertices, normals, num_facets, mu, gamma, object_
     try:
         sol = opti.solve()
         f_sol = sol.value(f)
-        return -f_sol[2] - f_sol[6]
+        # TODO: Double-check - should this be sum or mean?
+        return -sum([f_sol[4*i+2] for i in range(n_verts)])
     except:
         return -float('inf')
 

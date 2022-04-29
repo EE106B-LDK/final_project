@@ -1,0 +1,318 @@
+#!/usr/bin/env python -W ignore::DeprecationWarning
+"""
+Grasping Policy for EE106B grasp planning lab
+Author: Chris Correa
+"""
+import numpy as np
+import trimesh
+
+# 106B lab imports
+from metrics import (
+    compute_force_closure, 
+    compute_gravity_resistance,
+    compute_robust_force_closure,
+    compute_ferrari_canny
+)
+from utils import length, normalize, find_intersections, find_grasp_vertices, look_at_general, look_at_rotated, create_transform_matrix
+from utils import homog_3d, xi_screw, pose_from_homog_3d
+from scipy.spatial.transform import Rotation
+import vedo
+
+from casadi import Opti, sin, cos, tan, vertcat, mtimes, sumsqr, sum1, dot
+
+# These have not been measured, but should still work
+ARM_LENGTH = 0.2
+CONTACT_MU = 0.5
+CONTACT_GAMMA = 0.1
+OBJECT_MASS = {'nozzle': .25, 'pawn': .25, 'cube': .25}
+
+class AdaptiveGripper():
+    def __init__(self, g0, l_palm=0.075, l_proximal=0.06, l_tip=0.045):
+        self.g0 = g0
+        self.l_palm = l_palm
+        self.l_proximal = l_proximal
+        self.l_tip = l_tip
+
+    def valid(self, table_height=0, arm_length=ARM_LENGTH):
+        """
+        Returns if this pose should be accepted.
+        """
+        # Check collision of table with gripper base and arm
+        l_palm_half = self.l_palm / 2
+        kpts = np.matmul(self.g0, np.array([
+            [0, l_palm_half, 0, 1],
+            [0, -l_palm_half, 0, 1],
+            [0, 0, -arm_length, 1]
+        ]).T)
+        heights = kpts[2, :]
+        return np.all(heights > table_height)
+    
+    def joint_positions(self, joint_angles):
+        """
+        Return a dictionary of the joint positions
+        for the given configuration.
+        """
+        # Z points forward, Y points into left finger, X points down
+        # Positive joint angles close the gripper
+        # Joint angles of 0 has both fingers pointing straight into Z
+        l_palm_half = self.l_palm / 2
+        thetas_left, thetas_right = joint_angles[:2], joint_angles[2:]
+
+        # Initial keypoint positions (homogenous)
+        left_base = np.array([0, l_palm_half, 0, 1])
+        left_joint = np.array([0, l_palm_half, self.l_proximal, 1])
+        left_tip = np.array([0, l_palm_half, self.l_proximal + self.l_tip, 1])
+        right_base = np.array([0, -l_palm_half, 0, 1])
+        right_joint = np.array([0, -l_palm_half, self.l_proximal, 1])
+        right_tip = np.array([0, -l_palm_half, self.l_proximal + self.l_tip, 1])
+
+        # Left finger FK
+        theta1, theta2 = thetas_left
+        g_left_joint1 = homog_3d(xi_screw([1, 0, 0], [0, l_palm_half, 0], 0), theta1)
+        g_left_joint2 = homog_3d(xi_screw([1, 0, 0], [0, l_palm_half, self.l_proximal], 0), theta2)
+
+        g01_l = np.matmul(self.g0, g_left_joint1)
+        g02_l = np.matmul(g01_l, g_left_joint2)
+
+        # Right finger FK
+        theta1, theta2 = thetas_right
+        g_right_joint1 = homog_3d(xi_screw([-1, 0, 0], [0, -l_palm_half, 0], 0), theta1)
+        g_right_joint2 = homog_3d(xi_screw([-1, 0, 0], [0, -l_palm_half, self.l_proximal], 0), theta2)
+
+        g01_r = np.matmul(self.g0, g_right_joint1)
+        g02_r = np.matmul(g01_r, g_right_joint2)
+
+        return {
+            'l_tip': np.matmul(g02_l, left_tip)[:3],
+            'l_joint': np.matmul(g01_l, left_joint)[:3],
+            'l_base': np.matmul(self.g0, left_base)[:3],
+            'r_tip': np.matmul(g02_r, right_tip)[:3],
+            'r_joint': np.matmul(g01_r, right_joint)[:3],
+            'r_base': np.matmul(self.g0, right_base)[:3],
+        }
+
+    def check_collisions(self, joint_angles, mesh):
+        """
+        Find collisions between the mesh and the gripper
+        with the given joint angles.
+        """
+        positions = self.joint_positions(joint_angles)
+        return [
+            find_intersections(mesh, positions['l_base'], positions['r_base']),
+            find_intersections(mesh, positions['l_base'], positions['l_joint']),
+            find_intersections(mesh, positions['l_joint'], positions['l_tip']),
+            find_intersections(mesh, positions['r_base'], positions['r_joint']),
+            find_intersections(mesh, positions['r_joint'], positions['r_tip'])
+        ]
+
+    def contact_points(self, mesh, theta_min=None, theta_max=None, n_samples=100, pt_th=1e-5):
+        """
+        Find the contact points between the mesh and
+        this gripper as it closes. Assumes object is concave.
+        """
+        if theta_min is None:
+            theta_min = [-np.pi / 2, -np.pi / 2]
+        if theta_max is None:
+            theta_max = [np.pi / 2, np.pi / 2]
+        
+        th1_min, th2_min = theta_min
+        th1_max, th2_max = theta_max
+
+        # Move joint 1:
+        for th1 in np.linspace(th1_min, th1_max, num=n_samples):
+            collisions = self.check_collisions([th1, th2_min, th1, th2_min], mesh)
+            (base, proximal_left, tip_left, proximal_right, tip_right) = collisions
+            if (len(proximal_left) > 0
+                or len(proximal_right) > 0
+                or len(tip_left) > 0
+                or len(tip_right) > 0):
+                break
+        
+        # Move left joint 2
+        for th2_left in np.linspace(th2_min, th2_max, num=n_samples):
+            collisions = self.check_collisions([th1, th2_left, th1, th2_min], mesh)
+            (base, proximal_left, tip_left, proximal_right, tip_right) = collisions
+            if len(tip_left) > 0:
+                break
+        
+        # Move right joint 2
+        for th2_right in np.linspace(th2_min, th2_max, num=n_samples):
+            collisions = self.check_collisions([th1, th2_left, th1, th2_right], mesh)
+            (base, proximal_left, tip_left, proximal_right, tip_right) = collisions
+            if len(tip_right) > 0:
+                break
+        
+        collisions = self.check_collisions([th1, th2_left, th1, th2_right], mesh)
+        # Skip 2 close collisions (due to discrete steps of theta)
+        contact_points = []
+        contact_faces = []
+        for pts, faces in collisions:
+            # Will return None if no collisions
+            if faces is None:
+                faces = []
+            for pt, face in zip(pts, faces):
+                if len(contact_points) > 0:
+                    dists = np.linalg.norm(np.array(contact_points) - pt, axis=1)
+                    if np.any(dists < pt_th):
+                        continue
+                contact_points.append(pt)
+                contact_faces.append(face)
+        return np.array(contact_points), np.array(contact_faces)
+
+
+class AdaptiveGraspingPolicy():
+    def __init__(self, n_vert, n_grasps, n_execute, n_facets, metric_name, **gripper_args):
+        """
+        Parameters
+        ----------
+        n_vert : int
+            We are sampling vertices on the surface of the object.
+        n_grasps : int
+            how many grasps to sample.
+        n_execute : int
+            how many grasps to return in policy.action()
+        n_facets : int
+            how many facets should be used to approximate the friction cone between the 
+            finger and the object
+        metric_name : string
+            name of one of the function in src/metrics/metrics.py
+        """
+        self.n_vert = n_vert
+        self.n_grasps = n_grasps
+        self.n_execute = n_execute
+        self.n_facets = n_facets
+        # This is a function, one of the functions in src/metrics/metrics.py
+        self.metric = eval(metric_name)
+        self.gripper_args = gripper_args
+
+    def sample_grasps(self, vertices, normals):
+        """
+        Samples a bunch of candidate grasps points.
+
+        Parameters
+        ----------
+        vertices : nx3 :obj:`numpy.ndarray`
+            mesh vertices
+        normals : nx3 :obj:`numpy.ndarray`
+            mesh normals
+
+        Returns
+        -------
+        n_graspsx4x4 :obj:`numpy.ndarray`
+            grasps poses. Each grasp is the 4x4 homogenous transformation matrix of
+            the center of the gripper base.
+        """
+        grasp_poses = []
+        table_height = np.min(vertices[:, -1])
+        n_verts = len(vertices)
+        while len(grasp_poses) < self.n_grasps:
+            # Sample random index
+            idx = np.random.randint(0, high=n_verts)
+            p, n = vertices[idx], normals[idx]
+
+            # Look at normal, with random orientation
+            th = np.random.random_sample() * 2 * np.pi
+            g = look_at_rotated(p, -n, th)
+
+            # If good, add to list of grasps
+            gripper = AdaptiveGripper(g, **self.gripper_args)
+            if gripper.valid():
+                grasp_poses.append(g)
+        return np.array(grasp_poses)
+
+    def score_grasps(self, grasp_poses, object_mass, mesh):
+        """
+        Takes mesh and returns pairs of contacts and the quality of grasp between the contacts, sorted by quality
+        
+        Parameters
+        ----------
+        grasp_poses : n_graspsx4x4 :obj:`numpy.ndarray`
+            grasps. Each grasp is the 4x4 homogenous transformation matrix of
+            the center of the gripper base.
+
+        Returns
+        -------
+        scores : `list` of int
+            grasp quality for each 
+        verts : contact points for each grasp
+        """
+        scores, verts = [], []
+        for g in grasp_poses:
+            gripper = AdaptiveGripper(g, **self.gripper_args)
+            contact_points, contact_faces = gripper.contact_points(mesh)
+            if len(contact_points) < 1:
+                continue
+            verts.append(contact_points)
+            scores.append(self.metric(contact_points, mesh.face_normals[contact_faces], self.n_facets, CONTACT_MU, CONTACT_GAMMA, object_mass, mesh))
+        scores = np.array(scores).astype(np.float64)
+        scores = scores - np.min(scores[np.isfinite(scores)])
+        scores /= np.max(np.abs(scores[np.isfinite(scores)])) + 1e-8
+        return scores, np.array(verts)
+        
+    def visualize_grasp(self, mesh, vertices, pose):
+        """Visualizes a grasp on an object. Object specified by a mesh, as
+        loaded by trimesh. vertices is a set of (x, y, z) contact points.
+        pose is the pose of the gripper base.
+        Parameters
+        ----------
+        mesh (trimesh.base.Trimesh): mesh of the object
+        vertices (np.ndarray): 2x3 matrix, coordinates of the 2 contact points
+        pose (np.ndarray): 4x4 homogenous transform matrix
+        """
+        center = pose[:3, 3]
+        approach = pose[:3, 2]
+        tail = center - ARM_LENGTH * approach
+
+        contact_points = []
+        for v in vertices:
+            contact_points.append(vedo.Point(pos=v, r=30))
+
+        approach = vedo.shapes.Tube([center, tail], r=0.001, c='g')
+        vedo.show([mesh, approach] + contact_points, new=True)
+
+    def top_n_actions(self, mesh, obj_name):
+        """
+        Takes in a mesh, samples a bunch of grasps on the mesh, evaluates them using the 
+        metric given in the constructor, and returns the best grasps for the mesh.  SHOULD
+        RETURN GRASPS IN ORDER OF THEIR GRASP QUALITY.
+
+        Parameters
+        ----------
+        mesh : :obj:`Trimesh`
+
+        Returns
+        -------
+        :obj:`list` of :obj:Pose
+            the matrices T_world_grasp, which represents the hand poses of the baxter / sawyer
+            which would result in the fingers being placed at the vertices of the best grasps
+
+        RETURNS LIST OF LISTS
+        """
+        # Some objects have vertices in odd places, so you should sample evenly across 
+        # the mesh to get nicer candidate grasp points using trimesh.sample.sample_surface_even()
+        all_vertices, all_poses = [], []
+
+
+        while len(all_vertices) < self.n_execute:
+            assert len(all_vertices) == len(all_poses)
+            vertices, face_ind = trimesh.sample.sample_surface_even(mesh, self.n_vert)
+            normals = mesh.face_normals[face_ind]
+
+            grasp_poses = self.sample_grasps(vertices, normals)
+            mass = OBJECT_MASS[obj_name]
+            grasp_qualities, grasp_vertices = self.score_grasps(grasp_poses, mass, mesh)
+
+            # This is the poses of the grasps with the highest grasp qualities. Should be shape:
+            # n_executex4x4
+            top_grasp_ind = np.argsort(-grasp_qualities)[:self.n_execute]
+            top_n_grasps = grasp_poses[top_grasp_ind]
+            top_n_grasp_verts = grasp_vertices[top_grasp_ind]
+            print(grasp_qualities[top_grasp_ind])
+
+            verts = [v for v in top_n_grasp_verts if len(v) > 2]
+            poses = [p for (v, p) in zip(top_n_grasp_verts, top_n_grasps) if len(v) > 2]
+
+            all_vertices.extend(verts)
+            all_poses.extend(poses)
+
+        return all_vertices, all_poses

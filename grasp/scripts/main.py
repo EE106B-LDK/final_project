@@ -9,7 +9,7 @@ import cv2
 import argparse
 from utils import rotation_from_quaternion, create_transform_matrix, quaternion_from_matrix, triangulate, detect_face_3, COLORS, apply_transform
 import trimesh
-from policies import GraspingPolicy
+from policies import GraspingPolicy, AdaptiveGraspingPolicy
 from utils.utils import look_at_general
 import matplotlib.pyplot as plt
 import vedo
@@ -320,6 +320,10 @@ def parse_args():
         """Which robot you're using.  Options: baxter, sawyer.  
         Default: baxter"""
     )
+    parser.add_argument('--adaptive_policy', action='store_true', help=
+        """Whether or not to use the policy for the adaptive gripper rather
+        then the one for the parallel gripper."""
+    )
     parser.add_argument('--sim', action='store_true', help=
         """If you don\'t use this flag, you will only visualize the grasps.  This is 
         so you can run this outside of hte lab"""
@@ -363,13 +367,25 @@ if __name__ == '__main__':
         mesh = locate_cube(camera_topic, camera_info, camera_frame)
 
     # This policy takes a mesh and returns the best actions to execute on the robot
-    grasping_policy = GraspingPolicy(
-        args.n_vert, 
-        args.n_grasps, 
-        args.n_execute, 
-        args.n_facets, 
-        args.metric
-    )
+    if args.adaptive_policy:
+        grasping_policy = AdaptiveGraspingPolicy(
+            args.n_vert, 
+            args.n_grasps, 
+            args.n_execute, 
+            args.n_facets, 
+            args.metric,
+            l_palm=0.075,
+            l_proximal=0.06,
+            l_tip=0.045
+        )
+    else:
+        grasping_policy = GraspingPolicy(
+            args.n_vert, 
+            args.n_grasps, 
+            args.n_execute, 
+            args.n_facets, 
+            args.metric
+        )
 
     # Each grasp is represented by T_grasp_world, a RigidTransform defining the 
     # position of the end effector

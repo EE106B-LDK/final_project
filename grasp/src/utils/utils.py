@@ -216,6 +216,29 @@ def look_at_general(origin, direction):
 
     return result
 
+def look_at_rotated(origin, direction, theta):
+    up = np.array([0, 0, 1])
+    z = normalize(direction) # create a z vector in the given direction
+    x = normalize(np.cross(up, z)) # create a x vector perpendicular to z and up
+    y = np.cross(z, x) # create a y vector perpendicular to z and x
+
+    # Rotate around z by theta
+    R = Rotation.from_rotvec(theta * z).as_dcm()
+    x = np.matmul(R, x)
+    y = np.matmul(R, y)
+
+    result = np.eye(4)
+
+    # set rotation part of matrix
+    result[0:3,0] = x
+    result[0:3,1] = y
+    result[0:3,2] = z
+
+    # set translation part of matrix to origin
+    result[0:3,3] = origin
+
+    return result
+
 def create_transform_matrix(rotation_matrix, translation_vector):
     """
     Creates a homogenous 4x4 matrix representation of this transform
