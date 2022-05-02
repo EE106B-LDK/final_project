@@ -234,7 +234,7 @@ class AdaptiveGraspingPolicy():
 
             # If good, add to list of grasps
             gripper = AdaptiveGripper(g, mesh, **self.gripper_args)
-            if gripper.valid():
+            if gripper.valid(table_height=table_height):
                 grasp_poses.append(g)
         return np.array(grasp_poses)
 
