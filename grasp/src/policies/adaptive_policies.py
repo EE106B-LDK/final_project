@@ -27,8 +27,9 @@ CONTACT_GAMMA = 0.1
 OBJECT_MASS = {'nozzle': .25, 'pawn': .25, 'cube': .25}
 
 class AdaptiveGripper():
-    def __init__(self, g0, l_palm=0.075, l_proximal=0.06, l_tip=0.045):
+    def __init__(self, g0, mesh, l_palm=0.075, l_proximal=0.06, l_tip=0.045):
         self.g0 = g0
+        self.mesh = mesh
         self.l_palm = l_palm
         self.l_proximal = l_proximal
         self.l_tip = l_tip
@@ -45,7 +46,9 @@ class AdaptiveGripper():
             [0, 0, -arm_length, 1]
         ]).T)
         heights = kpts[2, :]
-        return np.all(heights > table_height)
+        if not np.all(heights > table_height):
+            return False
+        return True
     
     def joint_positions(self, joint_angles):
         """
@@ -91,21 +94,21 @@ class AdaptiveGripper():
             'r_base': np.matmul(self.g0, right_base)[:3],
         }
 
-    def check_collisions(self, joint_angles, mesh):
+    def check_collisions(self, joint_angles):
         """
         Find collisions between the mesh and the gripper
         with the given joint angles.
         """
         positions = self.joint_positions(joint_angles)
         return [
-            find_contacts(mesh, positions['l_base'], positions['r_base']),
-            find_contacts(mesh, positions['l_base'], positions['l_joint']),
-            find_contacts(mesh, positions['l_joint'], positions['l_tip']),
-            find_contacts(mesh, positions['r_base'], positions['r_joint']),
-            find_contacts(mesh, positions['r_joint'], positions['r_tip'])
+            find_contacts(self.mesh, positions['l_base'], positions['r_base']),
+            find_contacts(self.mesh, positions['l_base'], positions['l_joint']),
+            find_contacts(self.mesh, positions['l_joint'], positions['l_tip']),
+            find_contacts(self.mesh, positions['r_base'], positions['r_joint']),
+            find_contacts(self.mesh, positions['r_joint'], positions['r_tip'])
         ]
 
-    def contact_points(self, mesh, theta_min=None, theta_max=None, n_samples=100, pt_th=1e-5):
+    def contact_points(self, theta_min=None, theta_max=None, n_samples=100, pt_th=1e-5):
         """
         Find the contact points between the mesh and
         this gripper as it closes. Assumes object is concave.
@@ -119,13 +122,20 @@ class AdaptiveGripper():
         th1_min, th2_min = theta_min
         th1_max, th2_max = theta_max
 
+        # Check base intersections
+        collisions = self.check_collisions([th1_min, th2_min, th1_min, th2_min])
+        (base, proximal_left, tip_left, proximal_right, tip_right) = collisions
+        if (base[-1]
+            or proximal_left[-1]
+            or proximal_right[-1]
+            or tip_left[-1]
+            or tip_right[-1]):
+            return np.array([]), np.array([]), np.array([]), np.array([])
+
         # Move joint 1:
         for th1 in np.linspace(th1_min, th1_max, num=n_samples):
-            collisions = self.check_collisions([th1, th2_min, th1, th2_min], mesh)
+            collisions = self.check_collisions([th1, th2_min, th1, th2_min])
             (base, proximal_left, tip_left, proximal_right, tip_right) = collisions
-            # Check base intersection
-            if base[-1]:
-                return np.array([]), np.array([]), np.array([]), np.array([])
             # Check limb intersections
             if (proximal_left[-1]
                 or proximal_right[-1]
@@ -135,20 +145,20 @@ class AdaptiveGripper():
         
         # Move left joint 2
         for th2_left in np.linspace(th2_min, th2_max, num=n_samples):
-            collisions = self.check_collisions([th1, th2_left, th1, th2_min], mesh)
+            collisions = self.check_collisions([th1, th2_left, th1, th2_min])
             (base, proximal_left, tip_left, proximal_right, tip_right) = collisions
             if tip_left[-1]:
                 break
         
         # Move right joint 2
         for th2_right in np.linspace(th2_min, th2_max, num=n_samples):
-            collisions = self.check_collisions([th1, th2_left, th1, th2_right], mesh)
+            collisions = self.check_collisions([th1, th2_left, th1, th2_right])
             (base, proximal_left, tip_left, proximal_right, tip_right) = collisions
             if tip_right[-1]:
                 break
         
         joint_angles = np.array([th1, th2_left, th1, th2_right])
-        collisions = self.check_collisions([th1, th2_left, th1, th2_right], mesh)
+        collisions = self.check_collisions([th1, th2_left, th1, th2_right])
         # Skip 2 close collisions (due to discrete steps of theta)
         contact_points = []
         contact_faces = []
@@ -193,7 +203,7 @@ class AdaptiveGraspingPolicy():
         self.metric = eval(metric_name)
         self.gripper_args = gripper_args
 
-    def sample_grasps(self, vertices, normals):
+    def sample_grasps(self, vertices, normals, mesh):
         """
         Samples a bunch of candidate grasps points.
 
@@ -223,7 +233,7 @@ class AdaptiveGraspingPolicy():
             g = look_at_rotated(p, -n, th)
 
             # If good, add to list of grasps
-            gripper = AdaptiveGripper(g, **self.gripper_args)
+            gripper = AdaptiveGripper(g, mesh, **self.gripper_args)
             if gripper.valid():
                 grasp_poses.append(g)
         return np.array(grasp_poses)
@@ -246,8 +256,8 @@ class AdaptiveGraspingPolicy():
         """
         scores, verts, vert_indices, grasp_angles = [], [], [], []
         for g in grasp_poses:
-            gripper = AdaptiveGripper(g, **self.gripper_args)
-            contact_points, contact_faces, indices, joint_angles = gripper.contact_points(mesh)
+            gripper = AdaptiveGripper(g, mesh, **self.gripper_args)
+            contact_points, contact_faces, indices, joint_angles = gripper.contact_points()
             verts.append(contact_points)
             vert_indices.append(indices)
             grasp_angles.append(joint_angles)
@@ -278,7 +288,7 @@ class AdaptiveGraspingPolicy():
             contact_points.append(vedo.Point(pos=v, r=30, c=colors[i]))
 
         print("Joint Angles:", angles)
-        gripper = AdaptiveGripper(pose, **self.gripper_args)
+        gripper = AdaptiveGripper(pose, mesh, **self.gripper_args)
         joint_positions = gripper.joint_positions(angles)
         base = vedo.shapes.Tube([joint_positions['l_base'], joint_positions['r_base']], r=0.001, c='r')
         l_proximal = vedo.shapes.Tube([joint_positions['l_base'], joint_positions['l_joint']], r=0.001, c='g')
@@ -317,7 +327,7 @@ class AdaptiveGraspingPolicy():
             vertices, face_ind = trimesh.sample.sample_surface_even(mesh, self.n_vert)
             normals = mesh.face_normals[face_ind]
 
-            grasp_poses = self.sample_grasps(vertices, normals)
+            grasp_poses = self.sample_grasps(vertices, normals, mesh)
             mass = OBJECT_MASS[obj_name]
             grasp_qualities, grasp_vertices, grasp_indices, grasp_angles = self.score_grasps(grasp_poses, mass, mesh)
 
