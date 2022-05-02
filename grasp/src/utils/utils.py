@@ -42,6 +42,43 @@ def find_intersections(mesh, p1, p2):
     faces = index_tri[dist_mask]
     return on_segment, faces
 
+def find_contacts(mesh, p1, p2, th=1e-5):
+    """
+    Finds the tangent contact points between an input mesh and the
+    line segment connecting p1 and p2.
+
+    Parameters
+    ----------
+    mesh (trimesh.base.Trimesh): mesh of the object
+    p1 (3x np.ndarray): line segment point
+    p2 (3x np.ndarray): line segment point
+
+    Returns
+    -------
+    on_segment (kx3 np.ndarray): coordinates of the contact points
+    faces (kx np.ndarray): mesh face numbers of the contact points
+    intersects (bool): if the line segment intersects the mesh rather than lies
+        tangent to it
+    """
+    ray_origin = (p1 + p2) / 2.
+    ray_length = np.linalg.norm(p1 - p2)
+    ray_dir = (p2 - p1) / ray_length
+    locations, index_ray, index_tri = mesh.ray.intersects_location(
+        ray_origins=[ray_origin, ray_origin],
+        ray_directions=[ray_dir, -ray_dir],
+        multiple_hits=True)
+    if len(locations) <= 0:
+        return [], None, False
+    dist_to_center = np.linalg.norm(locations - ray_origin, axis=1)
+    dist_mask = dist_to_center <= (ray_length / 2.) # only keep intersections on the segment.
+    on_segment = locations[dist_mask]
+    faces = index_tri[dist_mask]
+    # Check for intersection by checking orthogonality to face normal
+    angles = np.matmul(mesh.face_normals[faces], ray_dir)
+    if np.any(angles > th):
+        return on_segment, faces, True
+    return on_segment, faces, False
+
 def find_grasp_vertices(mesh, p1, p2):
     """
     If the tips of an ideal two fingered gripper start off at

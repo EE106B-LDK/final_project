@@ -13,7 +13,7 @@ from metrics import (
     compute_robust_force_closure,
     compute_ferrari_canny
 )
-from utils import length, normalize, find_intersections, find_grasp_vertices, look_at_general, look_at_rotated, create_transform_matrix
+from utils import length, normalize, find_intersections, find_contacts, find_grasp_vertices, look_at_general, look_at_rotated, create_transform_matrix
 from utils import homog_3d, xi_screw, pose_from_homog_3d
 from scipy.spatial.transform import Rotation
 import vedo
@@ -98,11 +98,11 @@ class AdaptiveGripper():
         """
         positions = self.joint_positions(joint_angles)
         return [
-            find_intersections(mesh, positions['l_base'], positions['r_base']),
-            find_intersections(mesh, positions['l_base'], positions['l_joint']),
-            find_intersections(mesh, positions['l_joint'], positions['l_tip']),
-            find_intersections(mesh, positions['r_base'], positions['r_joint']),
-            find_intersections(mesh, positions['r_joint'], positions['r_tip'])
+            find_contacts(mesh, positions['l_base'], positions['r_base']),
+            find_contacts(mesh, positions['l_base'], positions['l_joint']),
+            find_contacts(mesh, positions['l_joint'], positions['l_tip']),
+            find_contacts(mesh, positions['r_base'], positions['r_joint']),
+            find_contacts(mesh, positions['r_joint'], positions['r_tip'])
         ]
 
     def contact_points(self, mesh, theta_min=None, theta_max=None, n_samples=100, pt_th=1e-5):
@@ -110,10 +110,11 @@ class AdaptiveGripper():
         Find the contact points between the mesh and
         this gripper as it closes. Assumes object is concave.
         """
+        # TODO: Fix issue where if initial pose intersects with mesh, will return an invalid grasp
         if theta_min is None:
-            theta_min = [-np.pi / 2, -np.pi / 2]
+            theta_min = [-np.pi / 2., -np.pi / 2.]
         if theta_max is None:
-            theta_max = [np.pi / 2, np.pi / 2]
+            theta_max = [np.pi / 2., 3. / 4. * np.pi]
         
         th1_min, th2_min = theta_min
         th1_max, th2_max = theta_max
@@ -122,31 +123,37 @@ class AdaptiveGripper():
         for th1 in np.linspace(th1_min, th1_max, num=n_samples):
             collisions = self.check_collisions([th1, th2_min, th1, th2_min], mesh)
             (base, proximal_left, tip_left, proximal_right, tip_right) = collisions
-            if (len(proximal_left) > 0
-                or len(proximal_right) > 0
-                or len(tip_left) > 0
-                or len(tip_right) > 0):
+            # Check base intersection
+            if base[-1]:
+                return np.array([]), np.array([]), np.array([]), np.array([])
+            # Check limb intersections
+            if (proximal_left[-1]
+                or proximal_right[-1]
+                or tip_left[-1]
+                or tip_right[-1]):
                 break
         
         # Move left joint 2
         for th2_left in np.linspace(th2_min, th2_max, num=n_samples):
             collisions = self.check_collisions([th1, th2_left, th1, th2_min], mesh)
             (base, proximal_left, tip_left, proximal_right, tip_right) = collisions
-            if len(tip_left) > 0:
+            if tip_left[-1]:
                 break
         
         # Move right joint 2
         for th2_right in np.linspace(th2_min, th2_max, num=n_samples):
             collisions = self.check_collisions([th1, th2_left, th1, th2_right], mesh)
             (base, proximal_left, tip_left, proximal_right, tip_right) = collisions
-            if len(tip_right) > 0:
+            if tip_right[-1]:
                 break
         
+        joint_angles = np.array([th1, th2_left, th1, th2_right])
         collisions = self.check_collisions([th1, th2_left, th1, th2_right], mesh)
         # Skip 2 close collisions (due to discrete steps of theta)
         contact_points = []
         contact_faces = []
-        for pts, faces in collisions:
+        indices = []
+        for i, (pts, faces, intersects) in enumerate(collisions):
             # Will return None if no collisions
             if faces is None:
                 faces = []
@@ -157,7 +164,8 @@ class AdaptiveGripper():
                         continue
                 contact_points.append(pt)
                 contact_faces.append(face)
-        return np.array(contact_points), np.array(contact_faces)
+                indices.append(i)
+        return np.array(contact_points), np.array(contact_faces), np.array(indices), joint_angles
 
 
 class AdaptiveGraspingPolicy():
@@ -211,7 +219,7 @@ class AdaptiveGraspingPolicy():
             p, n = vertices[idx], normals[idx]
 
             # Look at normal, with random orientation
-            th = np.random.random_sample() * 2 * np.pi
+            th = np.random.random_sample() * 2. * np.pi
             g = look_at_rotated(p, -n, th)
 
             # If good, add to list of grasps
@@ -236,20 +244,21 @@ class AdaptiveGraspingPolicy():
             grasp quality for each 
         verts : contact points for each grasp
         """
-        scores, verts = [], []
+        scores, verts, vert_indices, grasp_angles = [], [], [], []
         for g in grasp_poses:
             gripper = AdaptiveGripper(g, **self.gripper_args)
-            contact_points, contact_faces = gripper.contact_points(mesh)
-            if len(contact_points) < 1:
-                continue
+            contact_points, contact_faces, indices, joint_angles = gripper.contact_points(mesh)
             verts.append(contact_points)
-            scores.append(self.metric(contact_points, mesh.face_normals[contact_faces], self.n_facets, CONTACT_MU, CONTACT_GAMMA, object_mass, mesh))
+            vert_indices.append(indices)
+            grasp_angles.append(joint_angles)
+            if len(contact_points) < 1:
+                scores.append(-float('inf'))
+            else:
+                scores.append(self.metric(contact_points, mesh.face_normals[contact_faces], self.n_facets, CONTACT_MU, CONTACT_GAMMA, object_mass, mesh))
         scores = np.array(scores).astype(np.float64)
-        scores = scores - np.min(scores[np.isfinite(scores)])
-        scores /= np.max(np.abs(scores[np.isfinite(scores)])) + 1e-8
-        return scores, np.array(verts)
+        return scores, np.array(verts), np.array(vert_indices), np.array(grasp_angles)
         
-    def visualize_grasp(self, mesh, vertices, pose):
+    def visualize_grasp(self, mesh, vertices, indices, pose, angles):
         """Visualizes a grasp on an object. Object specified by a mesh, as
         loaded by trimesh. vertices is a set of (x, y, z) contact points.
         pose is the pose of the gripper base.
@@ -264,11 +273,21 @@ class AdaptiveGraspingPolicy():
         tail = center - ARM_LENGTH * approach
 
         contact_points = []
-        for v in vertices:
-            contact_points.append(vedo.Point(pos=v, r=30))
+        colors = ['r', 'g', 'b', 'p', 'y']
+        for v, i in zip(vertices, indices):
+            contact_points.append(vedo.Point(pos=v, r=30, c=colors[i]))
+
+        print("Joint Angles:", angles)
+        gripper = AdaptiveGripper(pose, **self.gripper_args)
+        joint_positions = gripper.joint_positions(angles)
+        base = vedo.shapes.Tube([joint_positions['l_base'], joint_positions['r_base']], r=0.001, c='r')
+        l_proximal = vedo.shapes.Tube([joint_positions['l_base'], joint_positions['l_joint']], r=0.001, c='g')
+        l_tip = vedo.shapes.Tube([joint_positions['l_joint'], joint_positions['l_tip']], r=0.001, c='b')
+        r_proximal = vedo.shapes.Tube([joint_positions['r_base'], joint_positions['r_joint']], r=0.001, c='p')
+        r_tip = vedo.shapes.Tube([joint_positions['r_joint'], joint_positions['r_tip']], r=0.001, c='y')
 
         approach = vedo.shapes.Tube([center, tail], r=0.001, c='g')
-        vedo.show([mesh, approach] + contact_points, new=True)
+        vedo.show([mesh, approach, base, l_proximal, l_tip, r_proximal, r_tip] + contact_points, new=True)
 
     def top_n_actions(self, mesh, obj_name):
         """
@@ -290,7 +309,7 @@ class AdaptiveGraspingPolicy():
         """
         # Some objects have vertices in odd places, so you should sample evenly across 
         # the mesh to get nicer candidate grasp points using trimesh.sample.sample_surface_even()
-        all_vertices, all_poses = [], []
+        all_vertices, all_poses, all_indices, all_angles = [], [], [], []
 
 
         while len(all_vertices) < self.n_execute:
@@ -300,19 +319,26 @@ class AdaptiveGraspingPolicy():
 
             grasp_poses = self.sample_grasps(vertices, normals)
             mass = OBJECT_MASS[obj_name]
-            grasp_qualities, grasp_vertices = self.score_grasps(grasp_poses, mass, mesh)
+            grasp_qualities, grasp_vertices, grasp_indices, grasp_angles = self.score_grasps(grasp_poses, mass, mesh)
 
             # This is the poses of the grasps with the highest grasp qualities. Should be shape:
             # n_executex4x4
             top_grasp_ind = np.argsort(-grasp_qualities)[:self.n_execute]
             top_n_grasps = grasp_poses[top_grasp_ind]
             top_n_grasp_verts = grasp_vertices[top_grasp_ind]
-            print(grasp_qualities[top_grasp_ind])
+            top_n_grasp_indices = grasp_indices[top_grasp_ind]
+            top_n_grasp_angles = grasp_angles[top_grasp_ind]
+            print("Scores:", grasp_qualities[top_grasp_ind])
 
-            verts = [v for v in top_n_grasp_verts if len(v) > 2]
-            poses = [p for (v, p) in zip(top_n_grasp_verts, top_n_grasps) if len(v) > 2]
+            idx = [i for i, v in enumerate(top_n_grasp_verts) if len(v) > 2]
+            verts = top_n_grasp_verts[idx]
+            poses = top_n_grasps[idx]
+            indices = top_n_grasp_indices[idx]
+            angles = top_n_grasp_angles[idx]
 
             all_vertices.extend(verts)
             all_poses.extend(poses)
+            all_indices.extend(indices)
+            all_angles.extend(angles)
 
-        return all_vertices, all_poses
+        return all_vertices, all_poses, all_indices, all_angles

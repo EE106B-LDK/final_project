@@ -374,9 +374,9 @@ if __name__ == '__main__':
             args.n_execute, 
             args.n_facets, 
             args.metric,
-            l_palm=0.075,
-            l_proximal=0.06,
-            l_tip=0.045
+            l_palm=0.015,
+            l_proximal=0.05,
+            l_tip=0.035
         )
     else:
         grasping_policy = GraspingPolicy(
@@ -389,7 +389,10 @@ if __name__ == '__main__':
 
     # Each grasp is represented by T_grasp_world, a RigidTransform defining the 
     # position of the end effector
-    grasp_vertices_total, grasp_poses = grasping_policy.top_n_actions(mesh, args.obj)
+    if args.adaptive_policy:
+        grasp_vertices_total, grasp_poses, grasp_indices, grasp_angles = grasping_policy.top_n_actions(mesh, args.obj)
+    else:
+        grasp_vertices_total, grasp_poses = grasping_policy.top_n_actions(mesh, args.obj)
 
     if not args.sim:
         # Execute each grasp on the baxter / sawyer
@@ -403,10 +406,19 @@ if __name__ == '__main__':
             print("Unknown robot type!")
             rospy.shutdown()
 
-    for grasp_vertices, grasp_pose in zip(grasp_vertices_total, grasp_poses):
-        grasping_policy.visualize_grasp(mesh, grasp_vertices, grasp_pose)
-        if not args.sim:
-            repeat = True
-            while repeat:
-                execute_grasp(grasp_pose, planner, gripper)
-                repeat = raw_input("repeat? [y|n] ") == 'y'
+    if not args.adaptive_policy:
+        for grasp_vertices, grasp_pose in zip(grasp_vertices_total, grasp_poses):
+            grasping_policy.visualize_grasp(mesh, grasp_vertices, grasp_pose)
+            if not args.sim:
+                repeat = True
+                while repeat:
+                    execute_grasp(grasp_pose, planner, gripper)
+                    repeat = raw_input("repeat? [y|n] ") == 'y'
+    else:
+        for grasp_vertices, grasp_pose, indices, angles in zip(grasp_vertices_total, grasp_poses, grasp_indices, grasp_angles):
+            grasping_policy.visualize_grasp(mesh, grasp_vertices, indices, grasp_pose, angles)
+            if not args.sim:
+                repeat = True
+                while repeat:
+                    execute_grasp(grasp_pose, planner, gripper)
+                    repeat = raw_input("repeat? [y|n] ") == 'y'
