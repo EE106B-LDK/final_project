@@ -1,0 +1,92 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="adaptive_gripper">
+  <xacro:macro name="adaptive_gripper" params="side">
+
+  <!-- Dimesions -->
+  <xacro:property name="joint_width"     value="0.014"/>
+  <xacro:property name="palm_width"      value="0.05" />
+  <xacro:property name="palm_length"     value="0.1"  />
+  <xacro:property name="palm_y_offset"   value="0.005"/>
+  <xacro:property name="palm_z_offset"   value="0.02" />
+  <xacro:property name="proximal_length" value="0.05" />
+  <xacro:property name="finger_length"   value="0.02" />
+  
+  <!-- Links -->
+  <link name="${side}_gripper_base">
+    <visual>
+      <geometry>
+        <box size="${joint_width} ${palm_width} ${palm_length}"/>
+      </geometry>
+    </visual>
+  </link>
+  <link name="left_proximal">
+    <visual>
+      <geometry>
+        <box size="${joint_width} ${joint_width} ${proximal_length}" />
+      </geometry>
+      <origin xyz="0 0 ${proximal_length/2}" />
+    </visual>
+  </link>
+  <link name="right_proximal">
+    <visual>
+      <geometry>
+        <box size="${joint_width} ${joint_width} ${proximal_length}"/>
+      </geometry>
+      <origin xyz="0 0 ${proximal_length/2}" />
+    </visual>
+  </link>
+  <link name="left_finger">
+    <visual>
+      <geometry>
+        <box size="${joint_width} ${joint_width} ${finger_length}"/>
+      </geometry>
+      <origin xyz="0 0 ${finger_length/2}" />
+    </visual>
+  </link>
+  <link name="right_finger">
+    <visual>
+      <geometry>
+        <box size="${joint_width} ${joint_width} ${finger_length}"/>
+      </geometry>
+      <origin xyz="0 0 ${finger_length/2}" />
+    </visual>
+  </link>
+
+  <!-- Joints -->
+  <joint name="${side}_gripper_base" type="fixed">
+    <origin rpy="0 0 0" xyz="0 0 0.025"/>
+    <parent link="${side}_hand"/>
+    <child link="${side}_gripper_base"/>
+  </joint>
+  <joint name="palm_to_left_proximal" type="revolute">
+    <parent link="palm" />
+    <child link="left_proximal" />
+    <limit lower="-1.52" upper="1.52" effort="1000.0" velocity="1.0" />
+    <origin xyz="0 ${-palm_y_offset} ${palm_length/2-palm_z_offset}" />
+    <axis xyz="-1 0 0" />
+  </joint>
+  <joint name="palm_to_right_proximal" type="revolute">
+    <parent link="palm" />
+    <child link="right_proximal" />
+    <limit lower="-1.52" upper="1.52" effort="1000.0" velocity="1.0" />
+    <origin xyz="0 ${palm_y_offset} ${palm_length/2-palm_z_offset}" />
+    <axis xyz="-1 0 0" />
+  </joint>
+  <joint name="left_proximal_to_finger" type="revolute">
+    <parent link="left_proximal" />
+    <child link="left_finger" />
+    <limit lower="-1.52" upper="1.52" effort="1000.0" velocity="1.0" />
+    <origin xyz=" 0 0 ${palm_length/2}" />
+    <axis xyz="-1 0 0" />
+  </joint>
+  <joint name="right_proximal_to_finger" type="revolute">
+    <parent link="right_proximal" />
+    <child link="right_finger" />
+    <limit lower="-1.52" upper="1.52" effort="1000.0" velocity="1.0" />
+    <origin xyz=" 0 0 ${palm_length/2}" />
+    <axis xyz="-1 0 0" />
+  </joint>
+
+  </xacro:macro>
+  <xacro:adaptive_gripper />
+</robot>
