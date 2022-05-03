@@ -390,7 +390,7 @@ if __name__ == '__main__':
     # Each grasp is represented by T_grasp_world, a RigidTransform defining the 
     # position of the end effector
     if args.adaptive_policy:
-        grasp_vertices_total, grasp_poses, grasp_indices, grasp_angles = grasping_policy.top_n_actions(mesh, args.obj)
+        grasp_vertices_total, grasp_poses, grasp_indices, grasp_angles, _ = grasping_policy.top_n_actions(mesh, args.obj)
     else:
         grasp_vertices_total, grasp_poses = grasping_policy.top_n_actions(mesh, args.obj)
 

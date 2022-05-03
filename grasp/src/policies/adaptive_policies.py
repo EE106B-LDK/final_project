@@ -319,7 +319,7 @@ class AdaptiveGraspingPolicy():
         """
         # Some objects have vertices in odd places, so you should sample evenly across 
         # the mesh to get nicer candidate grasp points using trimesh.sample.sample_surface_even()
-        all_vertices, all_poses, all_indices, all_angles = [], [], [], []
+        all_vertices, all_poses, all_indices, all_angles, all_scores = [], [], [], [], []
 
 
         while len(all_vertices) < self.n_execute:
@@ -338,17 +338,20 @@ class AdaptiveGraspingPolicy():
             top_n_grasp_verts = grasp_vertices[top_grasp_ind]
             top_n_grasp_indices = grasp_indices[top_grasp_ind]
             top_n_grasp_angles = grasp_angles[top_grasp_ind]
-            print("Scores:", grasp_qualities[top_grasp_ind])
+            top_n_scores = grasp_qualities[top_grasp_ind]
+            print("Scores:", top_n_scores)
 
             idx = [i for i, v in enumerate(top_n_grasp_verts) if len(v) > 2]
             verts = top_n_grasp_verts[idx]
             poses = top_n_grasps[idx]
             indices = top_n_grasp_indices[idx]
             angles = top_n_grasp_angles[idx]
+            scores = top_n_scores[idx]
 
             all_vertices.extend(verts)
             all_poses.extend(poses)
             all_indices.extend(indices)
             all_angles.extend(angles)
+            all_scores.extend(scores)
 
-        return all_vertices, all_poses, all_indices, all_angles
+        return all_vertices, all_poses, all_indices, all_angles, all_scores
