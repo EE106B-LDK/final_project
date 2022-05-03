@@ -1,0 +1,82 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="adaptive_gripper">
+  <xacro:macro name="adaptive_gripper" params="">
+
+  <!-- Meshes file name paths-->
+  <xacro:property name="mesh_path" value="package://baxter_description/meshes/adaptive_gripper" />
+
+  <!-- Macros for link generation -->
+  <xacro:macro name="proximal_link" params="side">
+    <link name="${side}_proximal_link">
+      <visual>
+        <geometry>
+          <mesh filename="${mesh_path}/proximal_link_${side}.stl " scale="0.001 0.001 0.001"/>
+        </geometry>
+      </visual>
+    </link>
+  </xacro:macro>
+  <xacro:macro name="distal_link" params="side">
+    <link name="${side}_distal_link">
+      <visual>
+        <geometry>
+          <mesh filename="${mesh_path}/distal_link_${side}.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </visual>
+    </link>
+    <joint name="${side}_proximal_to_distal_joint" type="revolute">
+      <origin xyz="0.3 0 0"/>
+      <parent link="${side}_proximal_link" />
+      <child link="${side}_distal_link" />
+      <limit lower="0" upper="3.14" effort="1000.0" velocity="0.5"/>
+      <!-- <axis = "1 0 0" /> -->
+    </joint>
+  </xacro:macro>
+  <xacro:macro name="finger" params="side">
+    <link name="${side}_finger">
+      <visual>
+        <geometry>
+          <mesh filename="${mesh_path}/finger_${side}.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </visual>
+    </link>
+    <joint name="${side}_distal_to_finger_joint" type="revolute">
+      <!-- <origin xyz="" rpy="" /> -->
+      <parent link="${side}_distal_link" />
+      <child link="${side}_finger" />
+      <limit lower="0" upper="3.14" effort="1000.0" velocity="0.5"/>
+      <!-- <axis = "1 0 0" /> -->
+    </joint>
+  </xacro:macro>
+  
+
+  <!-- Links -->
+  <link name="base">
+    <visual>
+      <geometry>
+        <mesh filename="${mesh_path}/wrist_plate.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+  </link>
+  <link name="palm_bottom">
+    <visual>
+      <geometry>
+        <mesh filename="${mesh_path}/palm_bottom.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+  </link>
+  <joint name="palm_bottom_to_base_joint" type="fixed">
+    <parent link="base" />
+    <child link="palm_bottom" />
+  </joint>
+
+  <xacro:proximal_link side="left" />
+  <xacro:distal_link   side="left" />
+  <xacro:finger        side="left" />
+  <!-- <xacro:proximal_link side="right" />
+  <xacro:distal_link   side="right" />
+  <xacro:finger        side="right" /> -->
+
+  </xacro:macro>
+  <xacro:adaptive_gripper />
+
+</robot>
