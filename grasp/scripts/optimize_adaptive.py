@@ -82,6 +82,7 @@ if __name__ == '__main__':
     f = open('de_results.txt', 'a')
     def de_callback(xk, convergence):
         f.write('%s, %d\n' % (str(xk), convergence))
+        f.flush()
     
     bounds = [(1e-3, 0.1), (1e-3, 0.1), (1e-3, 0.1)]
     start = time.time()
@@ -89,7 +90,7 @@ if __name__ == '__main__':
         gripper_eval,
         bounds,
         maxiter=args.n_iter,
-        popsize=1,
+        popsize=5,
         tol=0.01,
         mutation=(0.5, 1),
         recombination=0.7,
