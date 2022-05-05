@@ -155,7 +155,7 @@ class AdaptiveGripper():
         indices = [2]
         for th2_left in np.linspace(th2_min, th2_max, num=n_samples):
             collisions = self.check_collisions([th1, th2_left, th1, th2_min], indices=indices)
-            (tip_left) = collisions
+            tip_left = collisions[0]
             if tip_left[-1]:
                 break
         
@@ -163,7 +163,7 @@ class AdaptiveGripper():
         indices = [4]
         for th2_right in np.linspace(th2_min, th2_max, num=n_samples):
             collisions = self.check_collisions([th1, th2_left, th1, th2_right], indices=indices)
-            (tip_right) = collisions
+            tip_right = collisions[0]
             if tip_right[-1]:
                 break
         
@@ -298,6 +298,9 @@ class AdaptiveGraspingPolicy():
             contact_points.append(vedo.Point(pos=v, r=30, c=colors[i]))
 
         print("Joint Angles:", angles)
+        if len(angles) <= 0:
+            print("Not a valid grasp!")
+            return
         gripper = AdaptiveGripper(pose, mesh, **self.gripper_args)
         joint_positions = gripper.joint_positions(angles)
         base = vedo.shapes.Tube([joint_positions['l_base'], joint_positions['r_base']], r=0.001, c='r')
