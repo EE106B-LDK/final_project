@@ -188,7 +188,7 @@ def compute_gravity_resistance(vertices, normals, num_facets, mu, gamma, object_
     vs = [np.matmul(R(theta), v) for theta in thetas]
     
     # Find facet normals
-    facet_normals = [np.cross(vs[-1], vs[0])]
+    facet_normals = [normalize(np.cross(vs[-1], vs[0]))]
     for i in range(num_facets - 1):
         v1, v2 = vs[i], vs[i + 1]
         facet_normals.append(normalize(np.cross(v1, v2)))
@@ -205,8 +205,8 @@ def compute_gravity_resistance(vertices, normals, num_facets, mu, gamma, object_
     
     # Construct and solve
     opti.solver('ipopt')
-    p_opts = {"expand": False}
-    s_opts = {"max_iter": 1e4}
+    p_opts = {"expand": False, "print_time": False, "verbose": False}
+    s_opts = {"max_iter": 1e4, "print_level": 0}
 
     opti.solver('ipopt', p_opts, s_opts)
     try:

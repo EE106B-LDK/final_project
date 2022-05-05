@@ -3,9 +3,7 @@
 Starter Script for C106B Grasp Planning Lab
 Authors: Chris Correa, Riddhi Bagadiaa, Jay Monga
 """
-from cv2 import approxPolyDP
 import numpy as np
-import cv2
 import argparse
 from utils import rotation_from_quaternion, create_transform_matrix, quaternion_from_matrix, triangulate, detect_face_3, COLORS, apply_transform
 import trimesh
@@ -14,6 +12,7 @@ from utils.utils import look_at_general
 import matplotlib.pyplot as plt
 import vedo
 from scipy.optimize import differential_evolution, rosen
+import time
 
 def parse_args():
     """
@@ -24,8 +23,11 @@ def parse_args():
         """Which Object you\'re trying to pick up.  Options: nozzle, pawn.  
         Default: pawn"""
     )
-    parser.add_argument('-n_vert', type=int, default=2000, help=
+    parser.add_argument('-n_vert', type=int, default=1000, help=
         'How many vertices you want to sample on the object surface.  Default: 1000'
+    )
+    parser.add_argument('-n_iter', type=int, default=100, help=
+        'Maximum number of DE iterations to run.  Default: 200'
     )
     parser.add_argument('-n_facets', type=int, default=32, help=
         """You will approximate the friction cone as a set of n_facets vectors along 
@@ -33,7 +35,7 @@ def parse_args():
         you have to do is check if that vector can be represented by a POSITIVE 
         linear combination of the n_facets vectors.  Default: 32"""
     )
-    parser.add_argument('-n_grasps', type=int, default=500, help=
+    parser.add_argument('-n_grasps', type=int, default=200, help=
         'How many grasps you want to sample.  Default: 500')
     parser.add_argument('-metric', '-m', type=str, default='compute_force_closure', help=
         """Which grasp metric in grasp_metrics.py to use.  
@@ -76,7 +78,24 @@ if __name__ == '__main__':
         )
         _, _, _, _, scores = policy.top_n_actions(mesh, args.obj)
         return -scores[0]
+
+    def de_callback(xk, convergence):
+        print(xk, convergence)
     
     bounds = [(1e-3, 0.1), (1e-3, 0.1), (1e-3, 0.1)]
-    result = differential_evolution(gripper_eval, bounds, workers=-1)
+    start = time.time()
+    result = differential_evolution(
+        gripper_eval,
+        bounds,
+        maxiter=args.n_iter,
+        popsize=1,
+        tol=0.01,
+        mutation=(0.5, 1),
+        recombination=0.7,
+        polish=False,
+        disp=True,
+        callback=de_callback,
+        workers=-1,
+        updating='deferred')
     print(result)
+    print("Runtime (s):", time.time() - start)

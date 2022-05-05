@@ -42,7 +42,7 @@ def find_intersections(mesh, p1, p2):
     faces = index_tri[dist_mask]
     return on_segment, faces
 
-def find_contacts(mesh, p1, p2, th=1e-5):
+def find_contacts(mesh, p1, p2, th=1e-3):
     """
     Finds the tangent contact points between an input mesh and the
     line segment connecting p1 and p2.

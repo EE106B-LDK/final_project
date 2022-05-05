@@ -46,6 +46,8 @@ class AdaptiveGripper():
             [0, 0, -arm_length, 1]
         ]).T)
         heights = kpts[2, :]
+        if np.any(np.isnan(heights)):
+            return False
         if not np.all(heights > table_height):
             return False
         return True
@@ -94,21 +96,26 @@ class AdaptiveGripper():
             'r_base': np.matmul(self.g0, right_base)[:3],
         }
 
-    def check_collisions(self, joint_angles):
+    def check_collisions(self, joint_angles, indices=[0, 1, 2, 3, 4]):
         """
         Find collisions between the mesh and the gripper
         with the given joint angles.
         """
         positions = self.joint_positions(joint_angles)
-        return [
-            find_contacts(self.mesh, positions['l_base'], positions['r_base']),
-            find_contacts(self.mesh, positions['l_base'], positions['l_joint']),
-            find_contacts(self.mesh, positions['l_joint'], positions['l_tip']),
-            find_contacts(self.mesh, positions['r_base'], positions['r_joint']),
-            find_contacts(self.mesh, positions['r_joint'], positions['r_tip'])
-        ]
+        ret = []
+        if 0 in indices:
+            ret.append(find_contacts(self.mesh, positions['l_base'], positions['r_base']))
+        if 1 in indices:
+            ret.append(find_contacts(self.mesh, positions['l_base'], positions['l_joint']))
+        if 2 in indices:
+            ret.append(find_contacts(self.mesh, positions['l_joint'], positions['l_tip']))
+        if 3 in indices:
+            ret.append(find_contacts(self.mesh, positions['r_base'], positions['r_joint']))
+        if 4 in indices:
+            ret.append(find_contacts(self.mesh, positions['r_joint'], positions['r_tip']))
+        return ret
 
-    def contact_points(self, theta_min=None, theta_max=None, n_samples=100, pt_th=1e-5):
+    def contact_points(self, theta_min=None, theta_max=None, n_samples=32, pt_th=1e-4):
         """
         Find the contact points between the mesh and
         this gripper as it closes. Assumes object is concave.
@@ -133,9 +140,10 @@ class AdaptiveGripper():
             return np.array([]), np.array([]), np.array([]), np.array([])
 
         # Move joint 1:
+        indices = [1, 2, 3, 4]
         for th1 in np.linspace(th1_min, th1_max, num=n_samples):
-            collisions = self.check_collisions([th1, th2_min, th1, th2_min])
-            (base, proximal_left, tip_left, proximal_right, tip_right) = collisions
+            collisions = self.check_collisions([th1, th2_min, th1, th2_min], indices=indices)
+            (proximal_left, tip_left, proximal_right, tip_right) = collisions
             # Check limb intersections
             if (proximal_left[-1]
                 or proximal_right[-1]
@@ -144,16 +152,18 @@ class AdaptiveGripper():
                 break
         
         # Move left joint 2
+        indices = [2]
         for th2_left in np.linspace(th2_min, th2_max, num=n_samples):
-            collisions = self.check_collisions([th1, th2_left, th1, th2_min])
-            (base, proximal_left, tip_left, proximal_right, tip_right) = collisions
+            collisions = self.check_collisions([th1, th2_left, th1, th2_min], indices=indices)
+            (tip_left) = collisions
             if tip_left[-1]:
                 break
         
         # Move right joint 2
+        indices = [4]
         for th2_right in np.linspace(th2_min, th2_max, num=n_samples):
-            collisions = self.check_collisions([th1, th2_left, th1, th2_right])
-            (base, proximal_left, tip_left, proximal_right, tip_right) = collisions
+            collisions = self.check_collisions([th1, th2_left, th1, th2_right], indices=indices)
+            (tip_right) = collisions
             if tip_right[-1]:
                 break
         
@@ -261,7 +271,7 @@ class AdaptiveGraspingPolicy():
             verts.append(contact_points)
             vert_indices.append(indices)
             grasp_angles.append(joint_angles)
-            if len(contact_points) < 1:
+            if len(contact_points) < 2:
                 scores.append(-float('inf'))
             else:
                 scores.append(self.metric(contact_points, mesh.face_normals[contact_faces], self.n_facets, CONTACT_MU, CONTACT_GAMMA, object_mass, mesh))
@@ -321,37 +331,27 @@ class AdaptiveGraspingPolicy():
         # the mesh to get nicer candidate grasp points using trimesh.sample.sample_surface_even()
         all_vertices, all_poses, all_indices, all_angles, all_scores = [], [], [], [], []
 
+        assert len(all_vertices) == len(all_poses)
+        vertices, face_ind = trimesh.sample.sample_surface_even(mesh, self.n_vert)
+        normals = mesh.face_normals[face_ind]
 
-        while len(all_vertices) < self.n_execute:
-            assert len(all_vertices) == len(all_poses)
-            vertices, face_ind = trimesh.sample.sample_surface_even(mesh, self.n_vert)
-            normals = mesh.face_normals[face_ind]
+        grasp_poses = self.sample_grasps(vertices, normals, mesh)
+        mass = OBJECT_MASS[obj_name]
+        grasp_qualities, grasp_vertices, grasp_indices, grasp_angles = self.score_grasps(grasp_poses, mass, mesh)
 
-            grasp_poses = self.sample_grasps(vertices, normals, mesh)
-            mass = OBJECT_MASS[obj_name]
-            grasp_qualities, grasp_vertices, grasp_indices, grasp_angles = self.score_grasps(grasp_poses, mass, mesh)
+        # This is the poses of the grasps with the highest grasp qualities. Should be shape:
+        # n_executex4x4
+        top_grasp_ind = np.argsort(-grasp_qualities)[:self.n_execute]
+        top_n_grasps = grasp_poses[top_grasp_ind]
+        top_n_grasp_verts = grasp_vertices[top_grasp_ind]
+        top_n_grasp_indices = grasp_indices[top_grasp_ind]
+        top_n_grasp_angles = grasp_angles[top_grasp_ind]
+        top_n_scores = grasp_qualities[top_grasp_ind]
 
-            # This is the poses of the grasps with the highest grasp qualities. Should be shape:
-            # n_executex4x4
-            top_grasp_ind = np.argsort(-grasp_qualities)[:self.n_execute]
-            top_n_grasps = grasp_poses[top_grasp_ind]
-            top_n_grasp_verts = grasp_vertices[top_grasp_ind]
-            top_n_grasp_indices = grasp_indices[top_grasp_ind]
-            top_n_grasp_angles = grasp_angles[top_grasp_ind]
-            top_n_scores = grasp_qualities[top_grasp_ind]
-            print("Scores:", top_n_scores)
-
-            idx = [i for i, v in enumerate(top_n_grasp_verts) if len(v) > 2]
-            verts = top_n_grasp_verts[idx]
-            poses = top_n_grasps[idx]
-            indices = top_n_grasp_indices[idx]
-            angles = top_n_grasp_angles[idx]
-            scores = top_n_scores[idx]
-
-            all_vertices.extend(verts)
-            all_poses.extend(poses)
-            all_indices.extend(indices)
-            all_angles.extend(angles)
-            all_scores.extend(scores)
+        all_vertices.extend(top_n_grasp_verts)
+        all_poses.extend(top_n_grasps)
+        all_indices.extend(top_n_grasp_indices)
+        all_angles.extend(top_n_grasp_angles)
+        all_scores.extend(top_n_scores)
 
         return all_vertices, all_poses, all_indices, all_angles, all_scores
