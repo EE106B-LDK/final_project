@@ -37,7 +37,7 @@ def parse_args():
     )
     parser.add_argument('-n_grasps', type=int, default=200, help=
         'How many grasps you want to sample.  Default: 500')
-    parser.add_argument('-metric', '-m', type=str, default='compute_force_closure', help=
+    parser.add_argument('-metric', '-m', type=str, default='compute_gravity_resistance', help=
         """Which grasp metric in grasp_metrics.py to use.  
         Options: compute_force_closure, compute_gravity_resistance, compute_robust_force_closure"""
     )
@@ -79,8 +79,9 @@ if __name__ == '__main__':
         _, _, _, _, scores = policy.top_n_actions(mesh, args.obj)
         return -scores[0]
 
+    f = open('de_results.txt', 'a')
     def de_callback(xk, convergence):
-        print(xk, convergence)
+        f.write('%s, %d\n' % (str(xk), convergence))
     
     bounds = [(1e-3, 0.1), (1e-3, 0.1), (1e-3, 0.1)]
     start = time.time()
@@ -99,3 +100,4 @@ if __name__ == '__main__':
         updating='deferred')
     print(result)
     print("Runtime (s):", time.time() - start)
+    f.close()
