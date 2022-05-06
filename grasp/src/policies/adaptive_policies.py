@@ -24,7 +24,7 @@ from casadi import Opti, sin, cos, tan, vertcat, mtimes, sumsqr, sum1, dot
 ARM_LENGTH = 0.2
 CONTACT_MU = 0.5
 CONTACT_GAMMA = 0.1
-OBJECT_MASS = {'nozzle': .25, 'pawn': .25, 'cube': .25, 'e1': .25}
+OBJECT_MASS = {'nozzle': .25, 'pawn': .25, 'cube': .25, 'e1': .25, 'f1': .25}
 
 class AdaptiveGripper():
     def __init__(self, g0, mesh, l_palm=0.075, l_proximal=0.06, l_tip=0.045):
