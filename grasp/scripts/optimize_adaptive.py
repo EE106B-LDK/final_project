@@ -59,6 +59,18 @@ if __name__ == '__main__':
     mesh.apply_transform(T_world_obj)
     mesh.fix_normals()
 
+    # Mesh loading and pre-processing
+    f1 = trimesh.load_mesh("objects/f1.obj")
+    # Transform object mesh to world frame
+    f1.apply_transform(T_world_obj)
+    f1.fix_normals()
+
+    # Mesh loading and pre-processing
+    e1 = trimesh.load_mesh("objects/e1.obj")
+    # Transform object mesh to world frame
+    e1.apply_transform(T_world_obj)
+    e1.fix_normals()
+
     # Function to minimize with DE
     def gripper_eval(params):
         """
@@ -69,19 +81,21 @@ if __name__ == '__main__':
         policy = AdaptiveGraspingPolicy(
             args.n_vert, 
             args.n_grasps, 
-            1, 
+            5,
             args.n_facets, 
             args.metric,
             l_palm=l_palm,
             l_proximal=l_proximal,
             l_tip=l_tip
         )
-        _, _, _, _, scores = policy.top_n_actions(mesh, args.obj)
-        return -scores[0]
+        # _, _, _, _, scores = policy.top_n_actions(mesh, args.obj)
+        _, _, _, _, e1_scores = policy.top_n_actions(e1, 'e1')
+        _, _, _, _, f1_scores = policy.top_n_actions(f1, 'f1')
+        return -(np.mean(e1_scores) + np.mean(f1_scores))
 
     f = open('de_results.txt', 'a')
     def de_callback(xk, convergence):
-        f.write('%s, %d\n' % (str(xk), convergence))
+        f.write('%s, %f\n' % (str(xk), convergence))
         f.flush()
     
     bounds = [(1e-3, 0.1), (1e-3, 0.1), (1e-3, 0.1)]
