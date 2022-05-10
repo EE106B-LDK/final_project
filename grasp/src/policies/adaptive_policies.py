@@ -13,7 +13,7 @@ from metrics import (
     compute_robust_force_closure,
     compute_ferrari_canny
 )
-from utils import length, normalize, find_intersections, find_contacts, find_grasp_vertices, look_at_general, look_at_rotated, create_transform_matrix
+from utils import length, normalize, find_intersections, find_contacts, find_segment_intersection, find_grasp_vertices, look_at_general, look_at_rotated, create_transform_matrix
 from utils import homog_3d, xi_screw, pose_from_homog_3d
 from scipy.spatial.transform import Rotation
 import vedo
@@ -113,7 +113,27 @@ class AdaptiveGripper():
             ret.append(find_contacts(self.mesh, positions['r_base'], positions['r_joint']))
         if 4 in indices:
             ret.append(find_contacts(self.mesh, positions['r_joint'], positions['r_tip']))
-        return ret
+
+        # Self-collisions
+        self_collision = (
+            find_segment_intersection(
+                positions['l_base'], positions['r_base'],
+                positions['l_joint'], positions['l_tip']
+            ) or find_segment_intersection(
+                positions['l_base'], positions['r_base'],
+                positions['r_joint'], positions['r_tip']
+            ) or find_segment_intersection(
+                positions['l_joint'], positions['l_tip'],
+                positions['r_joint'], positions['r_tip']
+            ) or find_segment_intersection(
+                positions['l_joint'], positions['l_tip'],
+                positions['r_base'], positions['r_joint']
+            ) or find_segment_intersection(
+                positions['r_joint'], positions['r_tip'],
+                positions['l_base'], positions['l_joint']
+            )
+        )
+        return ret, self_collision
 
     def contact_points(self, theta_min=None, theta_max=None, n_samples=32, pt_th=1e-4):
         """
@@ -122,7 +142,7 @@ class AdaptiveGripper():
         """
         # TODO: Fix issue where if initial pose intersects with mesh, will return an invalid grasp
         if theta_min is None:
-            theta_min = [-np.pi / 2., -np.pi / 2.]
+            theta_min = [-np.pi / 2., -1. / 4. * np.pi]
         if theta_max is None:
             theta_max = [np.pi / 2., 3. / 4. * np.pi]
         
@@ -130,7 +150,7 @@ class AdaptiveGripper():
         th1_max, th2_max = theta_max
 
         # Check base intersections
-        collisions = self.check_collisions([th1_min, th2_min, th1_min, th2_min])
+        collisions, _ = self.check_collisions([th1_min, th2_min, th1_min, th2_min])
         (base, proximal_left, tip_left, proximal_right, tip_right) = collisions
         if (base[-1]
             or proximal_left[-1]
@@ -142,10 +162,11 @@ class AdaptiveGripper():
         # Move joint 1:
         indices = [1, 2, 3, 4]
         for th1 in np.linspace(th1_min, th1_max, num=n_samples):
-            collisions = self.check_collisions([th1, th2_min, th1, th2_min], indices=indices)
+            collisions, self_collision = self.check_collisions([th1, th2_min, th1, th2_min], indices=indices)
             (proximal_left, tip_left, proximal_right, tip_right) = collisions
             # Check limb intersections
-            if (proximal_left[-1]
+            if (self_collision
+                or proximal_left[-1]
                 or proximal_right[-1]
                 or tip_left[-1]
                 or tip_right[-1]):
@@ -154,21 +175,23 @@ class AdaptiveGripper():
         # Move left joint 2
         indices = [2]
         for th2_left in np.linspace(th2_min, th2_max, num=n_samples):
-            collisions = self.check_collisions([th1, th2_left, th1, th2_min], indices=indices)
+            collisions, self_collision = self.check_collisions([th1, th2_left, th1, th2_min], indices=indices)
             tip_left = collisions[0]
-            if tip_left[-1]:
+            if self_collision or tip_left[-1]:
                 break
         
         # Move right joint 2
         indices = [4]
         for th2_right in np.linspace(th2_min, th2_max, num=n_samples):
-            collisions = self.check_collisions([th1, th2_left, th1, th2_right], indices=indices)
+            collisions, self_collision = self.check_collisions([th1, th2_left, th1, th2_right], indices=indices)
             tip_right = collisions[0]
-            if tip_right[-1]:
+            if self_collision or tip_right[-1]:
                 break
         
         joint_angles = np.array([th1, th2_left, th1, th2_right])
-        collisions = self.check_collisions([th1, th2_left, th1, th2_right])
+        # Don't include base contact points as cannot really extert force on those points
+        indices = [1, 2, 3, 4]
+        collisions, _ = self.check_collisions([th1, th2_left, th1, th2_right], indices=indices)
         # Skip 2 close collisions (due to discrete steps of theta)
         contact_points = []
         contact_faces = []

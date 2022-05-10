@@ -79,6 +79,20 @@ def find_contacts(mesh, p1, p2, th=1e-3):
         return on_segment, faces, True
     return on_segment, faces, False
 
+def find_segment_intersection(a1, a2, b1, b2, th=1e-8):
+    """
+    Returns true if the two line segments given by (a1, a2) and (b1, b2)
+    intersect.
+    """
+    u, v = a2 - a1, b2 - b1
+    A = np.block([u.reshape((3, 1)), -v.reshape((3, 1))])
+    b = b1 - a1
+    lam = np.linalg.lstsq(A, b)[0]
+    if not np.linalg.norm(np.matmul(A, lam) - b) < th:
+        return False
+    lam1, lam2 = lam
+    return 0 <= lam1 and lam1 <= 1 and 0 <= lam2 and lam2 <= 1
+
 def find_grasp_vertices(mesh, p1, p2):
     """
     If the tips of an ideal two fingered gripper start off at
