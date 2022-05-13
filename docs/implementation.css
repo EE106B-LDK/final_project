@@ -116,14 +116,24 @@
     text-align: center;
 }
 .content-box .column{
-    /* width:%; */
+    width: 40%;
+}
+.content-box a{
+    text-align: center;
+}
+.content-box h2{
+    text-align: center;
+    font-size:30px;
 }
 .column img{
-    width:90%;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+    width: 50%;
     background-color: #ffffff;
     padding: 5px;
     border-radius: 5px;
-    float:none
+    float:none;
 }
 
 .link a{

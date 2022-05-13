@@ -21,38 +21,63 @@
   
             <h2>DISCUSSION OF RESULTS</h2>
             <p>
-                Our results
+                As seen in our results, we have successful generated an optimized gripper for a set of objects.
+                This can be seen when the adaptive gripper score decreases between the base and optimized gripper designs (lower score is better). 
+                In addition, the pawn scores increases which shows that optimized gripper will perform wores on an object not in the set.
             </p>
         </div>
         <div class="content-box">
-          <h2><u>Challenges Encoutered</u></h2>
-          <ol>
-              <li><b>URDF</b></li>
-                <p> Need to fill in </p>
-              <li><b>Picking up objects</b></li>
-                <p>Need to fill in</p>
-          </ol>
-        </div>
-        <div class="content-box">
-          <h2><u>Things We Would Have Changed</u></h2>
+          <h2>Challenges Encoutered</h2>
           <ul>
-              <li><b>Sampling</b> </li>
-                <p> Need to fill in</p>
-              <li><b>Joint Optimization</b> </li>
-              <p> Need to fill in</p>
-              <li><b>Learned Metrics</b> </li>
-                <p> Need to fill in</p>
-              <li><b>Dynamic Model for Gripper</b> </li>
-                <p> Need to fill in</p>
+              <li><b>Unified Robot Description Format (URDF)</b></li>
+                <p> We initially wanted to able to simulate grasping in ROS Gaezebo.
+                  However, this proved to be tricky because we needed to define our a URDF for the adaptive gripper.
+                  We had successful defined a URDF for a simplied version of gripper using box primitives; but there were issues pairing it with the Baxter URDF.
+                  To save ourselves from further trouble, we choose to not evaluate our gripper on simulation performance but on the same metric use to evolve the gripper.
+                </p>
+              <li><b>Picking up objects</b></li>
+                <p> We had diffcultly picking up objects due to a lack of a proper URDF for the adaptive gripper and gripper model.
+                  Since we had used a simplied model for our grasp policy and evolution algorithm, these gave faulty grasps for Baxter to execute on.
+                  We decided to "fix" this problem by using measured offsets in simulation and have Baxter perform smaller motions to prevent major crashes.
+                </p>
           </ul>
         </div>
         <div class="content-box">
-          <h2><u>Future Direction</u></h2>
+          <h2>Things We Would Have Changed</h2>
+          <ul>
+              <li><b>Sampling</b> </li>
+                <p> When we generate grasps in our grasp policy, we sample it randomly. 
+                  This method is easy and simple but may not produce great results when evolving a new gripper or generating a new grasp.
+                  We would have liked to have used a smarter sampling method that introduced less noise into the Differential Evolution algorithm (i.e. provide less variance).
+                  This would let the alogrithm converge faster and produce higher scoring grippers and grasps.
+                </p>
+              <li><b>Joint Optimization</b> </li>
+              <p> Another approach to solve the previous issue is to instead jointly optimizing the grasp within the Differential Evolution algorithm. 
+                This would avoid the need to sample for grasps. However, it may reduce performance because it would increase the complexity of our input into the algorithm.
+              </p>
+              <li><b>Learned Metrics</b> </li>
+                <p> Instead of using gravity resistance we could use learned metrics such as CNNs. 
+                  These would produce more informed scores that would speed up Differential Evolution and give use better grasps overall.
+                </p>
+              <li><b>Kinematic Model for Gripper</b> </li>
+                <p> Currently, we use a heavily simplfied model to represent our adaptive gripper. 
+                  The benefits of a simple model is found in the speed of the Differential Evolution algorithm. 
+                  However, this doesn't account for the real way the adaptie gripper would react to objects. 
+                  Therefore, a kinematic model model is required to correctly model our gripper and to prevent infeasible collisions.
+                </p>
+          </ul>
+        </div>
+        <div class="content-box">
+          <h2>Future Direction</h2>
           <ul> 
               <li><b>Extend to other gripper designs</b></li>
-                <p> Need to fill in</p>
+                <p> There types of grippers to explore which would expand our library of grippers. 
+                  This would help us reach our original goal to generate any effective gripper for a given set of objects.
+                </p>
               <li><b>Explore other grasp metrics and optimization/evolutionary algorithms</b> </li>
-                <p> Need to fill in</p>
+                <p> We have only tried Differental Evolution but there are many other algorithms that could be interesting to explore.
+                
+                </p>
           </ul>
         </div>
       
