@@ -1,0 +1,114 @@
+@font-face {
+	font-family: Bebas;
+	src: url('./fonts/roboto/Roboto-Medium.ttf');
+}
+
+.background{
+    background-color: #FAF9F6;
+}
+.nav{
+    display: "flex";
+    flex-direction: row;
+	min-height: 20vh;
+}
+.title a{
+    float: left;
+    color: #000000;
+	margin: 1vw;
+	text-decoration: none;
+    font-family: Bebas;
+	font-size: 200%;
+	border-bottom: 5px solid transparent;
+	padding-bottom: 3px;
+	transition: border-bottom 0.7s;
+    margin-bottom: 0.5%;
+	margin-top: 0.5%;
+	margin-left: 1.5%;
+}
+.navbar {
+	float: right;
+	margin-bottom: 1.5%;
+	margin-top: 1%;
+	margin-right: 1.5%;
+}
+.navbar a {
+	color: #000000;
+	margin: 1vw;
+	text-decoration: none;
+    font-family: Bebas;
+	font-size: 150%;
+	border-bottom: 5px solid transparent;
+	padding-bottom: 3px;
+	transition: border-bottom 0.7s;
+}
+.navbar a.active {
+	color: #000000;
+}
+.navbar a:hover {
+	padding-bottom: 3px;
+	border-bottom: 5px solid #000000;
+}
+.navbar .active:hover {
+	padding-bottom: 3px;
+	border-bottom: 5px solid #000000;
+}
+.nav {
+	min-height: 80px;
+}
+
+.header {
+    width: 100%; 
+    height: auto;
+    font-family: Bebas;
+}
+.header h2{
+    letter-spacing: 2px;
+    font-size:40px;
+    color: #000000;
+    margin-left: 2%;
+    text-align: left;
+}
+.header p{
+    text-align: left;
+    margin-left:2%
+}
+
+.content-box{
+    font-family: Bebas;
+    letter-spacing: 0.5px;
+    background-color: #e3dbd5;
+    padding: 19px;
+    border-radius: 10px;
+    float:none;
+    margin-top: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
+}
+.content-box h2{
+    margin-left: 20px;
+}
+.content-box ol{
+    text-align: left;
+}
+.content-box p{
+    margin-left:2%;
+}
+
+
+.footer{
+    font-family: Bebas;
+    letter-spacing: 1px;
+}
+
+.content {
+	min-height: 5vh;
+}
+
+.header {
+    text-align: center;
+}
+
+.wrap {
+	position: relative;
+	min-height: 100vh;
+}
