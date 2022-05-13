@@ -22,11 +22,55 @@
           <h2>IMPLEMENTATION</h2>
         </div>
         <div class="content-box">
-          <h2>Adapative Gripper</h2>
-
+          <h2> Overview </h2>
           <div class="column-container">
             <div class="column">
-              <img src="images/robotiq_gripper.png">
+              <p>Our implementation can be broken into 4 simple steps:</p>
+              <ol>
+                <li><b>Select a set of difficult set of objects to grasp</b></li>
+                <li><b>Design and fabricate an adaptive gripper</b></li>
+                <li><b>Evaluate and optimize adaptive gripper over a set of objects</b></li>
+                <li><b>Feed output gripper back in until convergence</b></li>
+              </ol>
+            </div>
+            <div class="column">
+              <br>
+              <img src="images/flowchart.png" />
+            </div>
+          </div>
+        </div>
+        <div class="content-box">
+          <h2>EGAD Dataset</h2>
+          <div class="column-container">
+            <div class="column">
+              <p>
+                For our object set, we chose objects E1 and F1 from the Evolved Grasping Analysis Dataset (EGAD) evaluation set. 
+                We choose these two object because they we low in complexity while high in grasp diffculty. 
+                Shape complexity is calculated as the entropy of the probability density function of the angular deficit of each vertex. 
+                Grasp difficulty is measured by the 75th percentile grasp quality of the computed Ferrari-Canny quality metric for each object.
+              </p>
+            </div>
+            <div class="column">
+              <br>
+              <img src="images/EGAD.png">
+            </div>
+          </div>
+        </div>
+        <div class="content-box">
+          <h2>Adapative Gripper</h2>
+          <div class="column-container">
+            <div class="column">
+              <p>For our research subject, we chose the Robotiq 2F-85 to optimization on.
+                We designed our own implementation for our own use using Fusion 360 and Robotiq's patent as a reference.
+                We chose this gripper due to its parallel and encompassing capablities and its mechanical elegance. 
+                Our gripper has a 85mm opening and is designed to install onto the Baxter arm. 
+                It is actuated by a Towerpro MG996R Servo and controlled via serial commands from a host computer. 
+                During testing, we validated that this gripper was capable of performing both parallel and
+                encompassing grasps just like the Robotiq 2F-85. 
+                This gripper is the baseline adaptive gripper that we compare all future optimizations to.
+              </p>
+            </div>
+            <div class="column">
               <br>
               <img src="images/robotiq_gripper_wire.png">
               <br>
@@ -34,25 +78,40 @@
               <br>
               <img src="images/adaptive_gripper_CAD.png">
             </div>
-            <div class="column">
-              <p>For our research subject, we chose Robotiq's Adaptive Gripper to optimization on.
-                We designed our own implementation fo the 
-              </p>
-            </div>
           </div>
         </div>
+        
         <div class="content-box">
           <h2>Differential Evolution</h2>
           <div class="column-container">
             <div class="column">
+              <p> For our optimization method, we chose to use Differential Evolution to maximize the sum of some quality heuristic for all objects. 
+                We chose to use gravity resistance as our heuristic, for its ease of implementation and computational simplicity. 
+                For each set of candidate gripper parameters, we judge its quality by computing the gravity
+                resistance metric for its best grasp on each object: </p>
+              <p>Q(θ, o) = max<sub>φ</sub> gravityresistance(θ, φ, o) </p>
+              <p>This is solved with a sample-based approach. Specifically,
+                we sample 500 valid encompassing grasps, and return the
+                one with the best score. To sample and score grasps for the
+                adaptive gripper, we:
+                <ol>
+                <li><p>Select a random point on the object mesh and a random
+                angle theta </p></li> 
+                <li><p> Initialize an open adaptive gripper with its base’s center
+                in contact with the selected point, and its orientation
+                determined by theta and the face normal at that point </li> 
+                <li><p> Close the gripper around the mesh by iteratively increas
+                ing joint angles and checking for contact with the mesh
+                and self-collisions </p></li> 
+                <li><p> Using the discovered contact points (excluding contact
+                points with the base of the gripper) to compute gravity
+                resistance </p></li> 
+                </ol>
+            </div>
+            <div class="column">
               <img src="images/flowchart.png" />
               <br>
               <img src="images/DE.png" />
-            </div>
-            <div class="column">
-              <p>
-                Fill in
-              </p>
             </div>
           </div>
         </div>
@@ -61,7 +120,50 @@
         <h2>RESULTS</h2>
       </div>
       <div class="content-box">
-        <h3> </h3>
+        <h3>Quantative</h3>
+        <div class="column-container">
+          <div class="column">
+            <p>There were two surprising results from the comparison of
+              metrics. The first was that optimization only improved the
+              gravity metric marginally. The second was that for some of
+              the difficult to grasp objects, there were only minor differences
+              between the parallel jaw gripper and the adaptive gripper. This
+              forces us to reconsider the benefits of an additional grasping
+              mode, or to consider whether the gravity metric is an effective
+              cost function for the optimization process.
+              Table 1 summarizes our results. To compensate for the high
+              variance in the results we observed, the table shows both the
+              best result and the average of the top 5 results for each difficult
+              to grasp object.</p>
+          </div>
+          <div class="column">
+            <br?
+            <img src="images/table.PNG" />
+            <br>
+            <img src="images/Results quant.png" />
+            <br>
+            <img src="images/Results quant2.png" />
+          </div>
+        </div>
+      </div>
+      <div class="content-box">
+        <h3>Qualitative</h3>
+        <div class="column-container">
+          <div class="column">
+            <p> We also evaluated the optimization output in a qualitative
+              manner, by creating 3D CAD models of an adaptive grip-
+              per based on the optimization output. Using these results,
+              we discovered that the gripper model used for optimization
+              was flawed and overly simplistic. The optimized parameters
+              resulted in gripper geometries that are highly specialized for
+              specific encompassing grasps and would be incapable of most
+              parallel jaw grasps due to a design that prevents the jaws from
+              ever touching. </p>
+          </div>
+          <div class="column">
+            <img src="images/Optimization result.png"
+          </div>
+        </div>
       </div>
       <div class="content-box">
         <a href="">Link to Paper</a>

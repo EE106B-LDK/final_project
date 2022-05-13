@@ -70,7 +70,8 @@
 }
 .header p{
     text-align: left;
-    margin-left:2%
+    margin-left:2%;
+    font-size: 20px;
 }
 .member-container{
     display: "flex";

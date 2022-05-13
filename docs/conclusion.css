@@ -1,5 +1,5 @@
 @font-face {
-	font-family: Bebas;
+	font-family: Roboto;
 	src: url('./fonts/roboto/Roboto-Medium.ttf');
 }
 
@@ -16,7 +16,7 @@
     color: #000000;
 	margin: 1vw;
 	text-decoration: none;
-    font-family: Bebas;
+    font-family: Roboto;
 	font-size: 200%;
 	border-bottom: 5px solid transparent;
 	padding-bottom: 3px;
@@ -35,7 +35,7 @@
 	color: #000000;
 	margin: 1vw;
 	text-decoration: none;
-    font-family: Bebas;
+    font-family: Roboto;
 	font-size: 150%;
 	border-bottom: 5px solid transparent;
 	padding-bottom: 3px;
@@ -59,7 +59,7 @@
 .header {
     width: 100%; 
     height: auto;
-    font-family: Bebas;
+    font-family: Roboto;
 }
 .header h2{
     letter-spacing: 2px;
@@ -70,11 +70,12 @@
 }
 .header p{
     text-align: left;
-    margin-left:2%
+    margin-left:2%;
+    font-size: 20px;
 }
 
 .content-box{
-    font-family: Bebas;
+    font-family: Roboto;
     letter-spacing: 0.5px;
     background-color: #e3dbd5;
     padding: 19px;
@@ -86,17 +87,22 @@
 }
 .content-box h2{
     margin-left: 20px;
+    font-size: 30px
 }
 .content-box ol{
     text-align: left;
 }
+.content-box b{
+    font-size: 25px
+}
 .content-box p{
     margin-left:2%;
+    font-size: 20px;
 }
 
 
 .footer{
-    font-family: Bebas;
+    font-family: Roboto;
     letter-spacing: 1px;
 }
 
